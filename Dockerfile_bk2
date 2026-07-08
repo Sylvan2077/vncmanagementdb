@@ -1,0 +1,36 @@
+# 正确的官方 python 3.10 镜像（你之前的标签不对）
+FROM python:3.10-base
+
+# 设置工作目录
+ENV SERVICE_HOME=/service
+WORKDIR $SERVICE_HOME
+
+# 安装 psycopg2 依赖（必须）
+RUN apt-get update && apt-get install -y \
+    libpq-dev gcc \
+    libmagic1 libmagic-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制代码（只需要一次）
+COPY . .
+COPY user_management-0.1.0-py3-none-any.whl .
+COPY vnc_session_client-0.1.0-py3-none-any.whl .
+
+# 安装依赖（确保用当前环境的 pip）
+RUN pip install --no-cache-dir -r requirements.txt \
+    ./user_management-0.1.0-py3-none-any.whl \
+    ./vnc_session_client-0.1.0-py3-none-any.whl \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    --trusted-host pypi.tuna.tsinghua.edu.cn
+
+# 验证 Django 确实安装成功（构建时就检查）
+RUN python -c "import django; print(django.__version__)"
+
+# 开放端口
+EXPOSE 10086
+
+# 正确启动（统一用 python，不是 python3，避免环境错乱）
+CMD ["python", "manage.py", "runserver", "0.0.0.0:10086"]
+
+MAINTAINER qa-team
+
