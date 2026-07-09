@@ -12,6 +12,9 @@ class VNCSession(models.Model):
     # display的id
     session_id = models.CharField(max_length=1024, help_text="vnc session ID")
 
+    # 创建session的节点URL
+    node_url = models.CharField(max_length=1024, help_text="创建session的VNC session manager节点URL")
+
     # display的id
     display_number = models.IntegerField(unique=True, help_text="display的序号")
 

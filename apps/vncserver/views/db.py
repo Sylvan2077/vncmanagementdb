@@ -96,13 +96,13 @@ class VncServerManager(APIView):
             display_number = next_display_number(vnc_sessions_info)
 
         # 启动 VNC 会话
-        pramas = {
+        params = {
             "username": username,
             "display_number": display_number,
             "custom_script_path": start_script,
         }
         try:
-            data = start_vnc_session(pramas)
+            data = start_vnc_session(params)
             if msg := data.get("msg"):
                 logger.error(msg)
                 return self.error("VNC session 服务启动失败！")
@@ -113,6 +113,7 @@ class VncServerManager(APIView):
         session_id = vnc_session_info.get("session_id")
         vnc_otp = vnc_session_info.get("otp_value")
         novnc_url = vnc_session_info.get("novnc_url")
+        node_url = data.get("node_url")
         host_port_match = re.search(r"host=([^&]+)&port=(\d+)", novnc_url)
         hostname = host_port_match.group(1)
         novnc_url = novnc_url.replace(hostname, server_ip)
@@ -124,6 +125,7 @@ class VncServerManager(APIView):
         with transaction.atomic():
             VNCSession.objects.create(
                 session_id=session_id,
+                node_url=node_url,
                 display_number=display_number,
                 run_software=start_software,
                 novnc_url=no_vnc_url,
