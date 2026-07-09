@@ -1,8 +1,6 @@
 import logging
-import random
 from itertools import cycle
 from django.conf import settings
-
 from vnc_session_client import VncApi, ApiClient, Configuration
 
 logger = logging.getLogger(__name__)
@@ -22,7 +20,7 @@ def get_round_robin_config():
 # service_config = Configuration(host=(settings.VNC_SESSION_MANAGER_URL))
 
 
-def start_vnc_session(pramas):
+def start_vnc_session(params: dict):
     config = get_round_robin_config()
     with ApiClient(config) as api_client:
         vnc_server_api = VncApi(api_client)

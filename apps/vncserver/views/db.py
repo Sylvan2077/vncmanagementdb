@@ -20,6 +20,11 @@ from apps.vncserver.serializers import (
     VncSessionListSerializer,
     AppManagerListSerializer, AppManagerNameIdSerializer, AppManagerNameSerializer,
 )
+from apps.vncserver.tasks import (
+    create_vnc_session,
+    close_vnc_session,
+    update_vnc_otp,
+)
 import json
 
 logger = logging.getLogger(__name__)
@@ -60,8 +65,9 @@ class VncServerManager(APIView):
         vncservers = vncservers.order_by("add_time")
         data = self.paginate_data(request, vncservers, VncSessionListSerializer)
         return self.success(data)
-
+    
     def post(self, request):
+        """异步创建 VNC 会话"""
         vncuser = request.user.username
         if not vncuser:
             error_msg = "用户名不存在，请联系管理员！"
@@ -69,81 +75,26 @@ class VncServerManager(APIView):
             return self.error(error_msg)
         data = request.data
         App_id = data.get("app_id")
-        # 查询APP信息
         if not App_id:
             error_msg = "APP不存在，请联系管理员！"
             logger.error(error_msg)
             return self.error(error_msg)
-        try:
-            AppInfo = AppManager.objects.get(id=App_id)
-        except AppInfo.DoesNotExist:
-            error_msg = "AppManager id = {} does not exists".format(App_id)
-            logger.error(error_msg)
-            return self.error(error_msg)
-        # 根据软件选择启动脚本
-        vncserver_script_path = settings.VNCSERVER_SCRIPT_PATH
-        run_bash_name = "run_{}.sh".format(AppInfo.full_name)
-        start_script = os.path.join(vncserver_script_path, run_bash_name)
-        start_software = AppInfo.full_name
-
-        # 以登录用户的账号启动远程桌面并返回url和otp密码
+        
         username = "caep_" + vncuser
-        if request.data.get("display_number"):
-            display_number = request.data.get("display_number")
-        else:
-            fields = ("display_number", "id")
-            vnc_sessions_info = VNCSession.objects.all().values_list(*fields)
-            display_number = next_display_number(vnc_sessions_info)
-
-        # 启动 VNC 会话
-        params = {
-            "username": username,
-            "display_number": display_number,
-            "custom_script_path": start_script,
-        }
-        try:
-            data = start_vnc_session(params)
-            if msg := data.get("msg"):
-                logger.error(msg)
-                return self.error("VNC session 服务启动失败！")
-        except Exception as e:
-            return self.error(str(e))
-        vnc_session_info = data.get("vnc_session_info")
-        server_ip = SysOptions.server_ip
-        session_id = vnc_session_info.get("session_id")
-        vnc_otp = vnc_session_info.get("otp_value")
-        novnc_url = vnc_session_info.get("novnc_url")
-        node_url = data.get("node_url")
-        host_port_match = re.search(r"host=([^&]+)&port=(\d+)", novnc_url)
-        hostname = host_port_match.group(1)
-        novnc_url = novnc_url.replace(hostname, server_ip)
-        no_vnc_url = novnc_url + "&resize=scale"
-
-        server_exists = VNCSession.objects.all().filter(display_number=display_number)
-        if server_exists:
-            VNCSession.objects.filter(display_number=display_number).delete()
-        with transaction.atomic():
-            VNCSession.objects.create(
-                session_id=session_id,
-                node_url=node_url,
-                display_number=display_number,
-                run_software=start_software,
-                novnc_url=no_vnc_url,
-                server_starter=request.user,
-            )
-        print(
-            " Started a new VNCSession Display. Display number is : {} ".format(
-                display_number
-            )
-        )
-        vnc_info = {
-            "display_number": int(display_number),
-            "vnc_otp": vnc_otp,
-            "vnc_url": no_vnc_url,
-        }
-        return self.success(vnc_info)
+        display_number = request.data.get("display_number")
+        user_id = request.user.id
+        
+        # 异步调用创建 session 的任务
+        task = create_vnc_session.delay(username, App_id, user_id, display_number)
+        
+        return self.success({
+            "task_id": task.id,
+            "message": "VNC session 创建任务已提交",
+            "display_number": display_number
+        })
 
     def delete(self, request):
+        """异步关闭 VNC 会话"""
         display_number = int(request.GET.get("display_number"))
         if not display_number:
             error_msg = "Invalid parameter, display_number is required"
@@ -156,21 +107,26 @@ class VncServerManager(APIView):
             logger.error(error_msg)
             return self.error(error_msg)
         session_id = vnc_session.session_id
-        try:
-            close_session(session_id)
-        except Exception as e:
-            return self.error(str(e))
+        
+        # 异步调用关闭 session 的任务
+        task = close_vnc_session.delay(session_id)
+        
+        # 异步删除数据库记录
         with transaction.atomic():
             vnc_session.delete()
-            print(" Closed VNC Session, Display number is {}".format(display_number))
-            return self.success()
+        
+        return self.success({
+            "task_id": task.id,
+            "message": "VNC session 关闭任务已提交",
+            "display_number": display_number
+        })
 
 
 class VncServerOTPManager(APIView):
     """VNC Session OTP 管理类"""
 
     def get(self, request):
-        # 更新 vnc session 访问的一次性密码
+        """异步更新 VNC session OTP"""
         display_number = int(request.GET.get("display_number"))
         if not display_number:
             error_msg = "Invalid parameter, display_number is required"
@@ -183,16 +139,15 @@ class VncServerOTPManager(APIView):
             logger.error(error_msg)
             return self.error(error_msg)
         session_id = vnc_session.session_id
-        try:
-            data = update_otp(session_id)
-            if msg := data.get("msg"):
-                logger.error(msg)
-                return self.error("server_error")
-        except Exception as e:
-            return self.error(str(e))
-        new_otp_value = data.get("otp_value")
-        vnc_info = {"display_number": display_number, "vnc_otp": new_otp_value}
-        return self.success(vnc_info)
+        
+        # 异步调用更新 OTP 的任务
+        task = update_vnc_otp.delay(session_id)
+        
+        return self.success({
+            "task_id": task.id,
+            "message": "OTP 更新任务已提交",
+            "display_number": display_number
+        })
 
 
 class AppConfigList(APIView):

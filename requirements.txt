@@ -5,7 +5,7 @@ django-dbconn-retry
 django-dramatiq
 django-redis
 django-environ
-djangorestframework
+djangorestframework<3.13
 django-treebeard
 dramatiq
 django-compression-middleware
@@ -33,3 +33,6 @@ bs4
 openpyxl
 #user-management
 #vnc-session-client
+celery
+django-celery-results
+django-celery-beat
