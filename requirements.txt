@@ -15,8 +15,8 @@ jsonpath-rw-ext
 otpauth==1.0.1
 Pillow
 prometheus-client
-#psycopg2-binary
-psycopg2-binary==2.8.6
+psycopg2-binary>=2.9.0
+# psycopg2-binary==2.8.6
 #psycopg2==2.8.6
 python-magic
 pytz
