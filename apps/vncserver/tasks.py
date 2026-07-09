@@ -82,14 +82,28 @@ def create_vnc_session(self, username, app_id, user_id=None, display_number=None
     vnc_session_info = data.get("vnc_session_info")
     server_ip = SysOptions.server_ip
     session_id = vnc_session_info.get("session_id")
-    vnc_otp = vnc_session_info.get("otp_value")
-    novnc_url = vnc_session_info.get("novnc_url")
     node_url = data.get("node_url")
 
+    #拼接节点Ip和vnc端口，端口根据display_number，vnc端口=display_number+5900
+    vnc_port = display_number + 5900
+    token_file_content = f"{node_url}:{vnc_port}"
+
+    # 根据session_id在novnc的target目录创建token文件
+    token_file_path = os.path.join(settings.NOVNC_TARGET_PATH, session_id)
+    with open(token_file_path, "w") as f:
+        f.write(token_file_content)
+    
+    vnc_otp = vnc_session_info.get("otp_value")
+    novnc_url = vnc_session_info.get("novnc_url")
+
+    # TODO: 不在使用该NoVNC URL拼接方式，改为直接使用session_id拼接websokify_url
     host_port_match = re.search(r"host=([^&]+)&port=(\d+)", novnc_url)
     hostname = host_port_match.group(1)
     novnc_url = novnc_url.replace(hostname, server_ip)
     no_vnc_url = novnc_url + "&resize=scale"
+
+    # 拼接websokify_url，格式为localhost:5801/vnc.html?path=?token=session_id
+    no_vnc_url = f"{server_ip}:5801/vnc.html?path=?token={session_id}"
 
     server_exists = VNCSession.objects.all().filter(display_number=display_number)
     if server_exists:
