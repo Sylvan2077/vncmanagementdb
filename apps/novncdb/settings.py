@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 import os
 
 import raven
+from celery.schedules import crontab
 
 from apps.utils.shortcuts import get_env
 
@@ -293,3 +294,12 @@ CELERY_TIMEZONE = 'Asia/Shanghai'
 # 重要：允许长时间任务
 CELERY_TASK_TIME_LIMIT = 120
 CELERY_TASK_SOFT_TIME_LIMIT = 100
+
+# Celery Beat 定时任务配置
+CELERY_BEAT_SCHEDULE = {
+    'cleanup-expired-sessions-weekly': {
+        'task': 'vnc.cleanup_expired_sessions',
+        # 每周一凌晨 2 点执行
+        'schedule': crontab(hour=2, minute=0, day_of_week=1),
+    },
+}

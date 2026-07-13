@@ -138,3 +138,63 @@ def update_vnc_otp(self, session_id):
     except Exception as e:
         logger.error(f"Failed to update OTP for session {session_id}: {str(e)}")
         return {"success": False, "error": str(e)}
+
+
+@shared_task(name='vnc.cleanup_expired_sessions')
+def cleanup_expired_sessions():
+    """
+    每周定时清理过期的 VNC 会话
+    
+    逻辑：
+    1. 查询数据库中 add_time 超过一周的会话
+    2. 对每个过期会话执行：
+       - 调用 close_session 关闭远程会话
+       - 删除数据库记录
+       - 删除 NOVNC_TARGET_PATH 目录下的 token 文件
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    
+    # 计算一周前的时间
+    one_week_ago = timezone.now() - timedelta(weeks=1)
+    
+    # 查询一周前创建的会话
+    expired_sessions = VNCSession.objects.filter(add_time__lte=one_week_ago)
+    expired_count = expired_sessions.count()
+    
+    if expired_count == 0:
+        logger.info("No expired VNC sessions found to cleanup")
+        return {"success": True, "cleaned_count": 0}
+    
+    logger.info(f"Found {expired_count} expired VNC sessions to cleanup")
+    
+    cleaned_count = 0
+    failed_count = 0
+    
+    for vnc_session in expired_sessions:
+        session_id = vnc_session.session_id
+        display_number = vnc_session.display_number
+        
+        try:
+            # 1. 关闭远程 session
+            close_session(session_id)
+            logger.info(f"Closed expired VNC session: {session_id}")
+            
+            # 2. 删除数据库记录
+            vnc_session.delete()
+            
+            # 3. 删除 token 文件
+            token_file_path = os.path.join(settings.NOVNC_TARGET_PATH, f"{session_id}")
+            if os.path.exists(token_file_path):
+                os.remove(token_file_path)
+                logger.info(f"Deleted token file: {token_file_path}")
+            
+            cleaned_count += 1
+            logger.info(f"Successfully cleaned up expired session {session_id} (display_number: {display_number})")
+        
+        except Exception as e:
+            failed_count += 1
+            logger.error(f"Failed to cleanup expired session {session_id}: {str(e)}")
+    
+    logger.info(f"Cleanup completed: {cleaned_count} cleaned, {failed_count} failed")
+    return {"success": True, "cleaned_count": cleaned_count, "failed_count": failed_count}
