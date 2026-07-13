@@ -9,6 +9,7 @@ VNCSessionListFields = (
     "display_number",
     "run_software",
     "novnc_url",
+    "node_url",
     "add_time",
     "add_time",
     "vncserver_starter"

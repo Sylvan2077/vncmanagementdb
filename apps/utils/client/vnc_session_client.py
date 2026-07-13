@@ -15,9 +15,32 @@ _config_cycle = cycle(_configs)
 
 def get_round_robin_config():
     """轮询选择下一个配置"""
-    return next(_config_cycle)
-
-# service_config = Configuration(host=(settings.VNC_SESSION_MANAGER_URL))
+    from apps.vncserver.models import VNCSession
+    
+    max_desktops_per_node = 8
+    total_nodes = len(_configs)
+    attempts = 0
+    
+    while attempts < total_nodes:
+        config = next(_config_cycle)
+        node_url = config.host
+        
+        # 查询该节点上已创建的桌面数量
+        desktop_count = VNCSession.objects.filter(node_url=node_url).count()
+        
+        if desktop_count < max_desktops_per_node:
+            # 该节点还有容量，返回此配置
+            logger.debug(f"Selected node {node_url} with {desktop_count}/{max_desktops_per_node} desktops")
+            return config
+        
+        # 该节点已满，跳过
+        logger.debug(f"Skipping node {node_url} - full ({desktop_count}/{max_desktops_per_node} desktops)")
+        attempts += 1
+    
+    # 所有节点都已满
+    msg = f"All {total_nodes} VNC session manager nodes are full (max {max_desktops_per_node} desktops each)"
+    logger.error(msg)
+    raise Exception(msg)
 
 
 def start_vnc_session(params: dict):
@@ -35,15 +58,7 @@ def start_vnc_session(params: dict):
             msg = f"调用VNC session管理服务[{config.host}]出现异常，请确认服务是否启动！"
             logger.error(msg)
             raise Exception(msg)
-    # with ApiClient(service_config) as api_client:
-    #     vnc_server_api = VncApi(api_client)
-    #     try:
-    #         response = vnc_server_api.start_session(pramas)
-    #         return response.get("data")
-    #     except Exception:
-    #         msg = "调用VNC session管理服务[启动vnc session]出现异常，请确认服务是否启动！"
-    #         logger.error(msg)
-    #         raise Exception(msg)
+
 
 
 def update_otp(session_id):
@@ -66,15 +81,6 @@ def update_otp(session_id):
             msg = f"调用VNC session管理服务[{config.host}]出现异常！"
             logger.error(msg)
             raise Exception(msg)
-    # with ApiClient(service_config) as api_client:
-    #     vnc_server_api = VncApi(api_client)
-    #     try:
-    #         response = vnc_server_api.update_otp(session_id)
-    #         return response.get("data")
-    #     except Exception:
-    #         msg = "调用VNC session管理服务[更新 otp]出现异常，请确认服务是否启动！"
-    #         logger.error(msg)
-    #         raise Exception(msg)
 
 
 def close_session(session_id):
@@ -97,12 +103,3 @@ def close_session(session_id):
             msg = f"调用VNC session管理服务[{config.host}]出现异常！"
             logger.error(msg)
             raise Exception(msg)
-    # with ApiClient(service_config) as api_client:
-    #     vnc_server_api = VncApi(api_client)
-    #     try:
-    #         vnc_server_api.close_session(session_id)
-    #     except Exception as e:
-    #         msg = "调用VNC session管理服务[关闭vnc session]出现异常，请确认服务是否启动！"
-    #         logger.error(msg)
-    #         raise Exception(msg)
-

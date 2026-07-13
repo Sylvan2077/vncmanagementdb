@@ -51,11 +51,6 @@ class VncServerManager(APIView):
 
     def get(self, request):
         """查询VNC Server 网址"""
-        # 检查是否是查询任务状态
-        task_id = request.GET.get("task_id")
-        if task_id:
-            return self._get_task_status(task_id)
-
         # 1.请求带display number时，校验此vncserver是否还存在。
         displayNum = request.GET.get("display_number")
         if displayNum:
@@ -72,49 +67,6 @@ class VncServerManager(APIView):
         data = self.paginate_data(request, vncservers, VncSessionListSerializer)
         return self.success(data)
 
-    def _get_task_status(self, task_id):
-        """查询异步任务状态"""
-        try:
-            result = AsyncResult(task_id)
-            
-            if result.state == 'PENDING':
-                return self.success({
-                    "task_id": task_id,
-                    "status": "pending",
-                    "message": "任务等待执行中..."
-                })
-            elif result.state == 'STARTED':
-                return self.success({
-                    "task_id": task_id,
-                    "status": "running",
-                    "message": "任务执行中..."
-                })
-            elif result.state == 'SUCCESS':
-                task_result = result.get()
-                if task_result.get("success"):
-                    return self.success({
-                        "task_id": task_id,
-                        "status": "success",
-                        "display_number": task_result.get("display_number"),
-                        "vnc_otp": task_result.get("vnc_otp"),
-                        "novnc_url": task_result.get("novnc_url"),
-                        "node_url": task_result.get("node_url"),
-                        "session_id": task_result.get("session_id"),
-                    })
-                else:
-                    return self.error(task_result.get("error", "任务执行失败"))
-            elif result.state == 'FAILURE':
-                return self.error(f"任务执行失败: {str(result.info)}")
-            else:
-                return self.success({
-                    "task_id": task_id,
-                    "status": result.state,
-                    "message": "未知状态"
-                })
-        except Exception as e:
-            logger.error(f"Failed to get task status: {str(e)}")
-            return self.error(f"获取任务状态失败: {str(e)}")
-    
     def post(self, request):
         """创建 VNC 会话（同步验证 + 异步执行）"""
         vncuser = request.user.username
@@ -144,13 +96,13 @@ class VncServerManager(APIView):
         start_script = os.path.join(vncserver_script_path, run_bash_name)
         username = "caep_" + vncuser
         
-        # 计算display_number（同步）
-        if request.data.get("display_number"):
-            display_number = request.data.get("display_number")
-        else:
-            fields = ("display_number", "id")
-            vnc_sessions_info = VNCSession.objects.all().values_list(*fields)
-            display_number = next_display_number(vnc_sessions_info)
+        # 计算display_number（同步）确保display_number唯一性    
+        # if request.data.get("display_number"):
+        #     display_number = request.data.get("display_number")
+        # else:
+        fields = ("display_number", "id")
+        vnc_sessions_info = VNCSession.objects.all().values_list(*fields)
+        display_number = next_display_number(vnc_sessions_info)
         
         user_id = request.user.id
         
@@ -196,6 +148,15 @@ class VncServerManager(APIView):
         # 删除数据库记录
         with transaction.atomic():
             vnc_session.delete()
+        
+        # 删除 NOVNC_TARGET_PATH 目录下以 session_id 命名的 token 文件
+        token_file_path = os.path.join(settings.NOVNC_TARGET_PATH, f"{session_id}.token")
+        if os.path.exists(token_file_path):
+            try:
+                os.remove(token_file_path)
+                logger.info(f"Deleted token file: {token_file_path}")
+            except Exception as e:
+                logger.error(f"Failed to delete token file {token_file_path}: {str(e)}")
         
         return self.success({
             "display_number": display_number,

@@ -21,21 +21,6 @@ from apps.vncserver.models import VNCSession, AppManager
 logger = logging.getLogger(__name__)
 
 
-def next_display_number(vnc_session_data):
-    if len(list(zip(*vnc_session_data))) > 0:
-        existIDs = set(list(zip(*vnc_session_data))[0])
-        maxID = max(existIDs)
-        expectedNumbers = set(range(1, maxID + 1))
-        diffNumbers = sorted(expectedNumbers.difference(existIDs))
-
-        if len(diffNumbers) > 0:
-            return diffNumbers[0]
-        else:
-            return maxID + 1
-    else:
-        return 1
-
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=10, name='vnc.start_vnc_session_async')
 def start_vnc_session_async(self, username, display_number, custom_script_path, user_id=None):
     """
@@ -70,6 +55,16 @@ def start_vnc_session_async(self, username, display_number, custom_script_path, 
     vnc_otp = vnc_session_info.get("otp_value")
     novnc_url = vnc_session_info.get("novnc_url")
     node_url = data.get("node_url")
+    # 提取node_url中的ip
+    node_ip = re.search(r"host=([^&]+)", node_url).group(1)
+
+    # 根据display_number拼接5900 + display_number
+    port = 5900 + display_number
+
+    # 根据session_id在NOVNC_TARGET_PATH目录下创建一个以session_id命名的token文件，内容为node_ip:port
+    token_file_path = os.path.join(settings.NOVNC_TARGET_PATH, f"{session_id}")
+    with open(token_file_path, "w") as f:
+        f.write(f"{node_ip}:{port}")
 
     host_port_match = re.search(r"host=([^&]+)&port=(\d+)", novnc_url)
     hostname = host_port_match.group(1)
