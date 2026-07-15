@@ -96,10 +96,6 @@ class VncServerManager(APIView):
         start_script = os.path.join(vncserver_script_path, run_bash_name)
         username = "caep_" + vncuser
         
-        # 计算display_number（同步）确保display_number唯一性    
-        # if request.data.get("display_number"):
-        #     display_number = request.data.get("display_number")
-        # else:
         fields = ("display_number", "id")
         vnc_sessions_info = VNCSession.objects.all().values_list(*fields)
         display_number = next_display_number(vnc_sessions_info)
@@ -162,6 +158,37 @@ class VncServerManager(APIView):
             "display_number": display_number,
             "message": "VNC session 已关闭"
         })
+
+    def patch(self, request):
+        """查询 VNC 会话启动状态"""
+        task_id = request.data.get("task_id")
+        if not task_id:
+            error_msg = "Invalid parameter, task_id is required"
+            logger.error(error_msg)
+            return self.error(error_msg)
+        
+        try:
+            result = AsyncResult(task_id)
+            status = result.status
+            response_data = {
+                "task_id": task_id,
+                "status": status,
+                "message": ""
+            }
+            
+            if status == "SUCCESS":
+                response_data["message"] = "VNC session 启动成功"
+                response_data["result"] = result.result
+            elif status == "PENDING":
+                response_data["message"] = "VNC session 正在启动中..."
+            elif status == "FAILURE":
+                response_data["message"] = "VNC session 启动失败"
+                response_data["error"] = str(result.info) if result.info else "Unknown error"
+            
+            return self.success(response_data)
+        except Exception as e:
+            logger.error(f"Failed to query task status for {task_id}: {str(e)}")
+            return self.error(str(e))
 
 
 class VncServerOTPManager(APIView):
