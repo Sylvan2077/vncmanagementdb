@@ -6,7 +6,7 @@ import os
 import re
 
 from django.conf import settings
-from django.db import transaction
+from django.db import transaction, models
 from celery.result import AsyncResult
 
 from apps.conf.options import SysOptions
@@ -157,9 +157,11 @@ class VncServerManager(APIView):
             logger.error(f"Failed to close VNC session {session_id}: {str(e)}")
             return self.error(str(e))
         
-        # 删除数据库记录
+        # 删除数据库记录并释放 display_pool
         with transaction.atomic():
             vnc_session.delete()
+            # 释放预分配的 display number
+            DisplayPool.objects.filter(number=display_number).update(is_used=False)
         
         # 删除 NOVNC_TARGET_PATH 目录下以 session_id 命名的 token 文件
         token_file_path = os.path.join(settings.NOVNC_TARGET_PATH, f"{session_id}.token")

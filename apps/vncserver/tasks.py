@@ -60,20 +60,30 @@ def start_vnc_session_async(self, username, display_number, custom_script_path, 
     novnc_url = vnc_session_info.get("novnc_url")
     node_url = data.get("node_url")
     # 提取node_url中的ip
-    node_ip = re.search(r"host=([^&]+)", node_url).group(1)
+    node_ip = re.search(r"https?://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)(?::\d+)?", node_url).group(1)
 
     # 根据display_number拼接5900 + display_number
     port = 5900 + display_number
 
     # 根据session_id在NOVNC_TARGET_PATH目录下创建一个以session_id命名的token文件，内容为node_ip:port
-    token_file_path = os.path.join(settings.NOVNC_TARGET_PATH, f"{session_id}")
-    with open(token_file_path, "w") as f:
-        f.write(f"{node_ip}:{port}")
+    try:
+        token_file_path = os.path.join(settings.NOVNC_TARGET_PATH, f"{session_id}")
+        os.makedirs(os.path.dirname(token_file_path), exist_ok=True)
+        logger.info(f"Writing token to: {token_file_path}")
+        logger.info(f"Parent dir exists: {os.path.exists(os.path.dirname(token_file_path))}")
+        with open(token_file_path, "w") as f:
+            f.write(f"{node_ip}:{port}")
+        if not os.path.exists(token_file_path):
+            raise IOError(f"Token file was not created on disk: {token_file_path}")
+    except Exception as e:
+        logger.error(f"fail to create tokenfile{str(e)}")
+        raise
 
     host_port_match = re.search(r"host=([^&]+)&port=(\d+)", novnc_url)
     hostname = host_port_match.group(1)
     novnc_url = novnc_url.replace(hostname, server_ip)
     no_vnc_url = novnc_url + "&resize=scale"
+    no_vnc_url = f"http://{server_ip}:6080/vnc.html?path=?token={session_id}"
 
     # 获取用户对象
     User = get_user_model()

@@ -137,7 +137,7 @@ VNCSERVER_SCRIPT_PATH = os.environ.get("START_APP_SCRIPTS_DIR", "/opt/scns_apps_
 OPENBOX_DIR = os.environ.get("OPENBOX_DIR", "/opt/scns_apps_platform/thirdparty/OpenBox")
 VIRTUALGL_DIR = os.environ.get("VIRTUALGL_DIR", "/opt/scns_apps_platform/thirdparty/VirtualGL")
 VNC_SESSION_MANAGER_URL = os.environ.get("VNC_SESSION_MANAGER_URL", "http://0.0.0.0:8000")
-VNC_SESSION_MANAGER_URLS = os.environ.get("VNC_SESSION_MANAGER_URLS", "http://node1:8000,http://node2:8000,http://node3:8000").split(",")
+VNC_SESSION_MANAGER_URLS = os.environ.get("VNC_SESSION_MANAGER_URLS", "http://0.0.0.0:8000").split(",")
 USER_MANAGEMENT_HOST = os.environ.get("USER_MANAGEMENT_HOST", "http://0.0.0.0:9000")
 NOVNC_TARGET_PATH = os.environ.get("NOVNC_TARGET_PATH", "/opt/scns_apps_platform/thirdparty/noVNC") 
 
@@ -252,6 +252,11 @@ def redis_config(db):
         "TIMEOUT": None,
         "KEY_PREFIX": "",
         "KEY_FUNCTION": make_key,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # 强制使用 RESP2 协议，兼容旧版 Redis 服务端，避免 HELLO 报错
+            "REDIS_CLIENT_KWARGS": {"protocol": 2}, 
+        },
     }
 
 
@@ -284,8 +289,8 @@ DRAMATIQ_RESULT_BACKEND = {
 IP_HEADER = "HTTP_X_REAL_IP"
 
 # settings.py
-CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
-CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/1'
+CELERY_BROKER_URL = 'redis://0.0.0.0:55555/0'
+CELERY_RESULT_BACKEND = 'redis://0.0.0.0:55555/1'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

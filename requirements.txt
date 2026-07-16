@@ -22,7 +22,7 @@ python-magic
 pytz
 qrcode
 raven
-redis
+redis==5
 requests
 six
 sqlparse
@@ -33,6 +33,6 @@ bs4
 openpyxl
 #user-management
 #vnc-session-client
-celery
+celery[redis]
 django-celery-results
 django-celery-beat
