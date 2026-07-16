@@ -16,7 +16,7 @@ from apps.utils.client.vnc_session_client import (
     update_otp,
     close_session,
 )
-from apps.vncserver.models import VNCSession, AppManager
+from apps.vncserver.models import VNCSession, AppManager, DisplayPool
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +44,13 @@ def start_vnc_session_async(self, username, display_number, custom_script_path, 
         data = start_vnc_session(params)
         if msg := data.get("msg"):
             logger.error(msg)
+            # 释放预分配的 display number
+            DisplayPool.objects.filter(number=display_number).update(is_used=False)
             return {"success": False, "error": msg}
     except Exception as e:
         logger.error(f"Failed to start VNC session: {str(e)}")
+        # 释放预分配的 display number
+        DisplayPool.objects.filter(number=display_number).update(is_used=False)
         return {"success": False, "error": str(e)}
 
     vnc_session_info = data.get("vnc_session_info")
@@ -101,6 +105,9 @@ def start_vnc_session_async(self, username, display_number, custom_script_path, 
 
         logger.info(f"VNC session created successfully. Display number: {display_number}")
         
+        # 任务成功完成，释放预分配的 display number
+        DisplayPool.objects.filter(number=display_number).update(is_used=False)
+        
         return {
             "success": True,
             "display_number": display_number,
@@ -111,6 +118,8 @@ def start_vnc_session_async(self, username, display_number, custom_script_path, 
         }
     except Exception as e:
         logger.error(f"Failed to save VNC session to database: {str(e)}")
+        # 释放预分配的 display number
+        DisplayPool.objects.filter(number=display_number).update(is_used=False)
         return {"success": False, "error": str(e)}
 
 

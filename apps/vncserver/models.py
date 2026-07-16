@@ -42,6 +42,19 @@ class VNCSession(models.Model):
         ordering = ["display_number"]
 
 
+class DisplayPool(models.Model):
+    """Display Number 预分配池"""
+    
+    number = models.IntegerField(unique=True, help_text="预分配的 display number")
+    is_used = models.BooleanField(default=False, help_text="是否已被使用")
+    created_at = models.DateTimeField(auto_now_add=True, help_text="创建时间")
+    
+    class Meta:
+        verbose_name = verbose_name_plural = "Display预分配池"
+        db_table = "display_pool"
+        ordering = ["number"]
+
+
 class AppManager(models.Model):
     """App 管理"""
     

@@ -16,7 +16,7 @@ from apps.utils.client.vnc_session_client import (
     update_otp,
     close_session,
 )
-from apps.vncserver.models import VNCSession, AppManager
+from apps.vncserver.models import VNCSession, AppManager, DisplayPool
 from apps.vncserver.serializers import (
     VncSessionListSerializer,
     AppManagerListSerializer, AppManagerNameIdSerializer, AppManagerNameSerializer,
@@ -96,9 +96,25 @@ class VncServerManager(APIView):
         start_script = os.path.join(vncserver_script_path, run_bash_name)
         username = "caep_" + vncuser
         
-        fields = ("display_number", "id")
-        vnc_sessions_info = VNCSession.objects.all().values_list(*fields)
-        display_number = next_display_number(vnc_sessions_info)
+        # 从预分配池中获取一个可用的 display number
+        with transaction.atomic():
+            # 获取可用的预分配编号
+            pool = DisplayPool.objects.select_for_update().filter(is_used=False).first()
+            
+            if not pool:
+                # 预分配池为空，动态扩展（一次预分配10个）
+                max_num = VNCSession.objects.aggregate(models.Max('display_number'))['display_number__max'] or 0
+                pool_numbers = []
+                for i in range(max_num + 1, max_num + 11):
+                    pool_numbers.append(DisplayPool(number=i))
+                DisplayPool.objects.bulk_create(pool_numbers)
+                
+                # 再次获取第一个可用编号
+                pool = DisplayPool.objects.select_for_update().filter(is_used=False).first()
+            
+            display_number = pool.number
+            pool.is_used = True
+            pool.save()
         
         user_id = request.user.id
         
