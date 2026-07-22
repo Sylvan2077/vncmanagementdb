@@ -6,7 +6,7 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
-        "PORT": os.environ.get("POSTGRES_PORT", "12377"),
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
         "NAME": os.environ.get("POSTGRES_DB", "vncserverdb"),
         "USER": os.environ.get("POSTGRES_USER", "novncserver"),
         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "novncserver"),
@@ -15,7 +15,7 @@ DATABASES = {
 
 REDIS_CONF = {
     "host": os.environ.get("REDIS_HOST", "127.0.0.1"),
-    "port": os.environ.get("REDIS_PORT", "55555"),
+    "port": os.environ.get("REDIS_PORT", "6379"),
 }
 
 DEBUG = False

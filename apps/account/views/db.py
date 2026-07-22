@@ -24,7 +24,7 @@ from apps.account.serializers import (
     UserRegisterSerializer,
 )
 from apps.utils.client import user_manager_client
-from apps.utils.api import APIView, validate_serializer
+from apps.utils.api import APIView, CSRFExemptAPIView, validate_serializer
 from apps.utils.captcha import Captcha
 from apps.utils.handle_passwd import encode_passwd
 from apps.utils.shortcuts import datetime2str, rand_str
@@ -124,9 +124,8 @@ class AvatarUploadAPI(APIView):
         return self.success("Succeeded")
 
 
-class UserLoginAPI(APIView):
+class UserLoginAPI(CSRFExemptAPIView):
     @validate_serializer(UserLoginSerializer)
-    @method_decorator(csrf_exempt)
     def post(self, request):
         """
         用户登录的 API
