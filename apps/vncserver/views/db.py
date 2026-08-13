@@ -16,10 +16,11 @@ from apps.utils.client.vnc_session_client import (
     update_otp,
     close_session,
 )
-from apps.vncserver.models import VNCSession, AppManager, DisplayPool
+from apps.vncserver.models import VNCSession, AppManager, DisplayPool, VncUrl
 from apps.vncserver.serializers import (
     VncSessionListSerializer,
     AppManagerListSerializer, AppManagerNameIdSerializer, AppManagerNameSerializer,
+    VncUrlListSerializer, CreateVncUrlSerializer,
 )
 from apps.vncserver.tasks import (
     start_vnc_session_async,
@@ -306,3 +307,93 @@ class GetUserManual(APIView):
         )
 
         return self.success({"manual_url": manual_url})
+
+
+class VncUrlManager(APIView):
+    """VNC Session Manager 节点 URL 管理"""
+
+    def get(self, request):
+        """查询节点 URL 列表"""
+        queryset = VncUrl.objects.all().order_by("id")
+        is_enabled = request.GET.get("is_enabled")
+        if is_enabled is not None:
+            is_enabled = is_enabled.lower() in ("true", "1", "yes")
+            queryset = queryset.filter(is_enabled=is_enabled)
+
+        data = self.paginate_data(request, queryset, VncUrlListSerializer)
+        return self.success(data)
+
+    def post(self, request):
+        """创建节点 URL"""
+        serializer = CreateVncUrlSerializer(data=request.data)
+        if not serializer.is_valid():
+            return self.invalid_serializer(serializer)
+
+        ip = serializer.validated_data["ip"]
+        port = serializer.validated_data["port"]
+
+        if VncUrl.objects.filter(ip=ip, port=port).exists():
+            error_msg = f"节点 {ip}:{port} 已存在！"
+            logger.error(error_msg)
+            return self.error(error_msg)
+
+        vnc_url = VncUrl.objects.create(**serializer.validated_data)
+        data = VncUrlListSerializer(vnc_url).data
+        return self.success(data)
+
+
+class VncUrlDetail(APIView):
+    """VNC 节点 URL 详情管理（更新、删除）"""
+
+    def put(self, request):
+        """更新节点 URL"""
+        data = request.data
+        vnc_url_id = data.get("id")
+        if not vnc_url_id:
+            error_msg = "参数错误，id 不能为空"
+            logger.error(error_msg)
+            return self.error(error_msg)
+
+        try:
+            vnc_url = VncUrl.objects.get(id=vnc_url_id)
+        except VncUrl.DoesNotExist:
+            error_msg = f"VNC节点 id={vnc_url_id} 不存在"
+            logger.error(error_msg)
+            return self.error(error_msg)
+
+        serializer = CreateVncUrlSerializer(data=data, partial=True)
+        if not serializer.is_valid():
+            return self.invalid_serializer(serializer)
+
+        if "ip" in serializer.validated_data or "port" in serializer.validated_data:
+            new_ip = serializer.validated_data.get("ip", vnc_url.ip)
+            new_port = serializer.validated_data.get("port", vnc_url.port)
+            if VncUrl.objects.filter(ip=new_ip, port=new_port).exclude(id=vnc_url_id).exists():
+                error_msg = f"节点 {new_ip}:{new_port} 已存在！"
+                logger.error(error_msg)
+                return self.error(error_msg)
+
+        for key, value in serializer.validated_data.items():
+            setattr(vnc_url, key, value)
+        vnc_url.save()
+
+        data = VncUrlListSerializer(vnc_url).data
+        return self.success(data)
+
+    def delete(self, request):
+        """删除节点 URL"""
+        vnc_url_id = request.GET.get("id")
+        if not vnc_url_id:
+            error_msg = "参数错误，id 不能为空"
+            logger.error(error_msg)
+            return self.error(error_msg)
+
+        try:
+            vnc_url = VncUrl.objects.get(id=vnc_url_id)
+        except VncUrl.DoesNotExist:
+            error_msg = f"VNC节点 id={vnc_url_id} 不存在"
+            logger.error(error_msg)
+            return self.error(error_msg)
+
+        vnc_url.delete()
+        return self.success({"id": vnc_url_id, "message": "删除成功"})

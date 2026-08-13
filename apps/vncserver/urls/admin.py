@@ -2,6 +2,7 @@
 # coding: utf-8
 
 from apps.vncserver.views.admin import (VncServerManagement,VncServerOTPGenerater,AppManagerConfig,AppConfigList,UploadManual,CheckAppConfig,UploadApp,GetInstallLog,GetPkgSubdir,ReinstallApp)
+from apps.vncserver.views.db import VncUrlManager, VncUrlDetail
 from django.conf.urls import url
 
 urlpatterns = [
@@ -14,5 +15,7 @@ urlpatterns = [
     url(r"^check_app_config/?$", CheckAppConfig.as_view(), name="check_app_config"),
     url(r"^get_install_log/?$", GetInstallLog.as_view(), name="get_install_log"),
     url(r"^get_pkg_subdir/?$", GetPkgSubdir.as_view(), name="get_pkg_subdir"),
-    url(r"^reinstall_app/?$", ReinstallApp.as_view(), name="reinstall_app")
+    url(r"^reinstall_app/?$", ReinstallApp.as_view(), name="reinstall_app"),
+    url(r"^vnc_urls/?$", VncUrlManager.as_view(), name="admin_vnc_url_manager"),
+    url(r"^vnc_url_detail/?$", VncUrlDetail.as_view(), name="admin_vnc_url_detail"),
 ]

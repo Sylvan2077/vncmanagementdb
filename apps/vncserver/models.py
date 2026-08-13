@@ -55,6 +55,25 @@ class DisplayPool(models.Model):
         ordering = ["number"]
 
 
+class VncUrl(models.Model):
+    """VNC Session Manager 多节点 URL 配置"""
+
+    ip = models.CharField(max_length=255, help_text="节点IP地址")
+    port = models.IntegerField(help_text="节点端口")
+    description = models.CharField(max_length=1024, null=True, blank=True, help_text="节点描述")
+    is_enabled = models.BooleanField(default=True, help_text="是否启用")
+    add_time = models.DateTimeField(auto_now_add=True, help_text="添加时间")
+
+    @property
+    def url(self):
+        return f"http://{self.ip}:{self.port}"
+
+    class Meta:
+        verbose_name = verbose_name_plural = "VNC节点配置"
+        db_table = "vnc_urls"
+        ordering = ["id"]
+
+
 class AppManager(models.Model):
     """App 管理"""
     

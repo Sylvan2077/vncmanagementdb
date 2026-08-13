@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from apps.vncserver.models import VNCSession, AppManager
+from apps.vncserver.models import VNCSession, AppManager, VncUrl
 from apps.utils.api import serializers
 
 # VNCSession列表相关字段
@@ -96,3 +96,29 @@ class AppManagerNameIdSerializer(serializers.ModelSerializer):
     class Meta:
         model = AppManager
         fields = AppManagerNameIdFields
+
+
+VncUrlListFields = (
+    "id",
+    "ip",
+    "port",
+    "url",
+    "description",
+    "is_enabled",
+    "add_time",
+)
+
+
+class VncUrlListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VncUrl
+        fields = VncUrlListFields
+
+
+class CreateVncUrlSerializer(serializers.Serializer):
+    ip = serializers.CharField(max_length=255, required=True, allow_blank=False,
+                               error_messages={"blank": "IP地址不能为空！"})
+    port = serializers.IntegerField(required=True,
+                                    error_messages={"invalid": "端口必须为整数！"})
+    description = serializers.CharField(max_length=1024, required=False, allow_blank=True, allow_null=True)
+    is_enabled = serializers.BooleanField(required=False, default=True)

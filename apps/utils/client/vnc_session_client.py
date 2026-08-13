@@ -1,28 +1,36 @@
 import logging
 from itertools import cycle
-from django.conf import settings
 from vnc_session_client import VncApi, ApiClient, Configuration
 
 logger = logging.getLogger(__name__)
 
-# 从配置中获取多个 VNC session 服务节点
-VNC_SESSION_MANAGER_URLS = settings.VNC_SESSION_MANAGER_URLS
 
-# 创建配置循环器（用于轮询）
-_configs = [Configuration(host=url) for url in VNC_SESSION_MANAGER_URLS]
-_config_cycle = cycle(_configs)
+def get_vnc_session_manager_urls():
+    """从数据库获取所有启用的 VNC Session Manager 节点 URL"""
+    from apps.vncserver.models import VncUrl
+    vnc_urls = VncUrl.objects.filter(is_enabled=True)
+    return [v.url for v in vnc_urls]
 
 
 def get_round_robin_config():
     """轮询选择下一个配置"""
     from apps.vncserver.models import VNCSession
     
+    vnc_urls = get_vnc_session_manager_urls()
+    if not vnc_urls:
+        msg = "没有可用的 VNC session manager 节点，请在数据库中配置节点信息"
+        logger.error(msg)
+        raise Exception(msg)
+    
+    configs = [Configuration(host=url) for url in vnc_urls]
+    config_cycle = cycle(configs)
+    
     max_desktops_per_node = 8
-    total_nodes = len(_configs)
+    total_nodes = len(configs)
     attempts = 0
     
     while attempts < total_nodes:
-        config = next(_config_cycle)
+        config = next(config_cycle)
         node_url = config.host
         
         # 查询该节点上已创建的桌面数量
