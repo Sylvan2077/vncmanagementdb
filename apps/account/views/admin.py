@@ -22,8 +22,10 @@ from apps.account.serializers import (
 from apps.utils.api import APIView, validate_serializer
 from apps.utils.api.api import CSRFExemptAPIView
 from apps.utils.client import user_manager_client
-from apps.utils.handle_passwd import encode_passwd
+from apps.utils.handle_passwd import encode_passwd, decode_passwd
 from apps.utils.shortcuts import rand_str
+
+from apps.account.views.db import find_available_uid
 
 logger = logging.getLogger(__name__)
 
@@ -313,3 +315,47 @@ class SynchronizeAPI(APIView):
         if msg := data.get("msg"):
             return self.error(msg)
         return self.success(data)
+
+
+class UserSupplementaryRegisterAPI(APIView):
+    """用户补充注册接口 - 为所有已有用户重新注册到VNC节点"""
+
+    @super_admin_required
+    def post(self, request):
+        users = User.objects.exclude(id=1)
+        success_count = 0
+        failed_users = []
+
+        for user in users:
+            try:
+                password = decode_passwd(user.encrypt_passwd)
+                if not password:
+                    failed_users.append({"username": user.username, "reason": "密码为空"})
+                    continue
+
+                uid = find_available_uid()
+                if uid is None:
+                    failed_users.append({"username": user.username, "reason": "无法生成UID"})
+                    continue
+
+                form_data = {
+                    "user_name": user.username,
+                    "user_passwd": password,
+                    "uid": uid,
+                }
+                msg = user_manager_client.register(form_data)
+                if msg:
+                    failed_users.append({"username": user.username, "reason": msg})
+                else:
+                    success_count += 1
+            except Exception as e:
+                logger.error(f"用户 {user.username} 补充注册失败: {e}")
+                failed_users.append({"username": user.username, "reason": str(e)})
+
+        result = {
+            "total": users.count(),
+            "success_count": success_count,
+            "failed_count": len(failed_users),
+            "failed_users": failed_users,
+        }
+        return self.success(result)

@@ -10,6 +10,7 @@ from apps.account.views.admin import (
     UploadLogoAPI,
     UploadRegisterData,
     SynchronizeAPI,
+    UserSupplementaryRegisterAPI,
 )
 
 urlpatterns = [
@@ -23,4 +24,9 @@ urlpatterns = [
     url(r"^server_user/?$", DleteServerUsers.as_view(), name="server_user_api"),
     url(r"^upload_logo/?$", UploadLogoAPI.as_view(), name="upload_logo_api"),
     url(r"^synchronize/?$", SynchronizeAPI.as_view(), name="synchronize_api"),
+    url(
+        r"^supplementary_register/?$",
+        UserSupplementaryRegisterAPI.as_view(),
+        name="supplementary_register_api",
+    ),
 ]

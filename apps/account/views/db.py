@@ -4,6 +4,7 @@
 import logging
 import os
 from importlib import import_module
+import subprocess
 
 import magic
 from django.conf import settings
@@ -32,6 +33,50 @@ from apps.vncserver.models import VNCSession
 
 logger = logging.getLogger(__name__)
 
+def get_max_uid():
+    try:
+        result = subprocess.run(
+            ['awk', '-F:', '{print $3}', '/etc/passwd'],
+            capture_output=True, text=True
+        )
+        uids = [int(line.strip()) for line in result.stdout.split('\n') if line.strip().isdigit()]
+        if uids:
+            return max(uids)
+        return 1000
+    except Exception as e:
+        logger.error(f"获取最大UID失败: {e}")
+        return 1000
+
+
+def find_available_uid(start_uid=None):
+    import random
+    min_uid = 1100
+    max_uid = get_max_uid()
+    logger.debug(f"UID搜索范围: min={min_uid}, max={max_uid}")
+    
+    if max_uid >= min_uid:
+        uids = list(range(min_uid, max_uid + 1))
+        logger.debug(f"生成UID列表，共{len(uids)}个候选UID")
+        random.shuffle(uids)
+        logger.debug(f"随机打乱UID顺序，开始遍历查找可用UID...")
+        
+        for uid in uids:
+            result = subprocess.run(['id', '-u', str(uid)], capture_output=True)
+            if result.returncode != 0:
+                return uid
+        logger.debug(f"在{min_uid}-{max_uid}范围内未找到可用UID")
+    
+    logger.debug(f"从{min_uid}开始向上顺序查找可用UID...")
+    uid = min_uid
+    while uid < 65535:
+        result = subprocess.run(['id', '-u', str(uid)], capture_output=True)
+        if result.returncode != 0:
+            logger.debug(f"找到可用UID: {uid}")
+            return uid
+        uid += 1
+    
+    logger.error("未找到可用UID（已达最大限制65535）")
+    return None
 
 class UserProfileAPI(APIView):
     @method_decorator(ensure_csrf_cookie)
