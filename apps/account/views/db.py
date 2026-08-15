@@ -234,8 +234,12 @@ class UserRegisterAPI(APIView):
         # 检测用户名
         if User.objects.filter(username=data["username"]).exists():
             return self.error("用户名已经存在！")
+        # 生成可用UID
+        uid = find_available_uid()
+        if uid is None:
+            return self.error("无法生成UID，请稍后重试！")
         # 创建远程试用系统用户
-        user = User.objects.create(username=data["username"])
+        user = User.objects.create(username=data["username"], uid=uid)
         user.set_password(data["password"])
         encrypt_passwd = encode_passwd(data["password"])
         user.encrypt_passwd = encrypt_passwd
@@ -243,7 +247,7 @@ class UserRegisterAPI(APIView):
         # 创建用户详情
         UserProfile.objects.create(user=user)
         # 创建关联服务用户
-        form_data = {"user_name": data["username"], "user_passwd": data["password"]}
+        form_data = {"user_name": data["username"], "user_passwd": data["password"], "uid": uid}
         msg = user_manager_client.register(form_data)
         if msg:
             # 删除远程试用系统用户

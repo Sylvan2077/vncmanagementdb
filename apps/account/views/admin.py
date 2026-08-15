@@ -236,8 +236,12 @@ class GenerateUserAPI(CSRFExemptAPIView):
 
         try:
             for user_info in user_list:
+                # 生成可用UID
+                uid = find_available_uid()
+                if uid is None:
+                    return self.error(msg="error", err=f"用户 {user_info.get('username')} 无法生成UID")
                 # 创建远程试用系统用户
-                user = User.objects.create(username=user_info.get("username"))
+                user = User.objects.create(username=user_info.get("username"), uid=uid)
                 user.set_password(user_info.get("password"))
                 user.save()
                 # 创建用户详情
@@ -246,6 +250,7 @@ class GenerateUserAPI(CSRFExemptAPIView):
                 form_data = {
                     "user_name": user_info.get("username"),
                     "user_passwd": user_info.get("password"),
+                    "uid": uid,
                 }
                 msg = user_manager_client.register(form_data)
                 if msg:
@@ -333,15 +338,14 @@ class UserSupplementaryRegisterAPI(APIView):
                     failed_users.append({"username": user.username, "reason": "密码为空"})
                     continue
 
-                uid = find_available_uid()
-                if uid is None:
-                    failed_users.append({"username": user.username, "reason": "无法生成UID"})
+                if user.uid is None:
+                    failed_users.append({"username": user.username, "reason": "用户无UID，请重新注册"})
                     continue
 
                 form_data = {
                     "user_name": user.username,
                     "user_passwd": password,
-                    "uid": uid,
+                    "uid": user.uid,
                 }
                 msg = user_manager_client.register(form_data)
                 if msg:

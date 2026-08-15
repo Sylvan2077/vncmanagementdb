@@ -51,6 +51,7 @@ class User(AbstractBaseUser):
     email = models.TextField(null=True)
     enterprise = models.TextField(null=True)
     encrypt_passwd = models.TextField(null=True)
+    uid = models.BigIntegerField(null=True, blank=True, help_text="VNC用户UID")
     create_time = models.DateTimeField(auto_now_add=True, null=True)
     last_update_time = models.DateTimeField(auto_now=True, help_text="用户信息最近修改时间")
     # 管理员类别
