@@ -86,7 +86,7 @@ class VncServerManager(APIView):
         # 查询APP信息（同步验证）
         try:
             AppInfo = AppManager.objects.get(id=App_id)
-        except AppInfo.DoesNotExist:
+        except AppManager.DoesNotExist:
             error_msg = "AppManager id = {} does not exists".format(App_id)
             logger.error(error_msg)
             return self.error(error_msg)
@@ -97,34 +97,21 @@ class VncServerManager(APIView):
         start_script = os.path.join(vncserver_script_path, run_bash_name)
         username = "caep_" + vncuser
         
-        # 从预分配池中获取一个可用的 display number
-        with transaction.atomic():
-            # 获取可用的预分配编号
-            pool = DisplayPool.objects.select_for_update().filter(is_used=False).first()
-            
-            if not pool:
-                # 预分配池为空，动态扩展（一次预分配10个）
-                max_num = VNCSession.objects.aggregate(models.Max('display_number'))['display_number__max'] or 0
-                pool_numbers = []
-                for i in range(max_num + 1, max_num + 11):
-                    pool_numbers.append(DisplayPool(number=i))
-                DisplayPool.objects.bulk_create(pool_numbers)
-                
-                # 再次获取第一个可用编号
-                pool = DisplayPool.objects.select_for_update().filter(is_used=False).first()
-            
-            display_number = pool.number
-            pool.is_used = True
-            pool.save()
-        
+        fileds = ("display_number", "id")
+        vnc_session_info = VNCSession.objects.values_list(*fileds)
+        display_number = next_display_number(vnc_session_info)        
         user_id = request.user.id
         
         # 异步调用 start_vnc_session 及后续处理
-        task = start_vnc_session_async.delay(
+        start_vnc_session_task = getattr(
+            __import__("apps.vncserver.tasks", fromlist=["start_vnc_session_async"]),
+            "start_vnc_session_async",
+        )
+        task = start_vnc_session_task.delay(
             username=username,
             display_number=display_number,
             custom_script_path=start_script,
-            user_id=user_id
+            user_id=user_id,
         )
         
         return self.success({
