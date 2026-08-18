@@ -15,6 +15,7 @@ from apps.utils.client.vnc_session_client import (
     start_vnc_session,
     update_otp,
     close_session,
+    invalidate_urls_cache,
 )
 from apps.vncserver.models import VNCSession, AppManager, DisplayPool, VncUrl
 from apps.vncserver.serializers import (
@@ -325,6 +326,7 @@ class VncUrlManager(APIView):
             return self.error(error_msg)
 
         vnc_url = VncUrl.objects.create(**serializer.validated_data)
+        invalidate_urls_cache()
         data = VncUrlListSerializer(vnc_url).data
         return self.success(data)
 
@@ -363,6 +365,7 @@ class VncUrlDetail(APIView):
         for key, value in serializer.validated_data.items():
             setattr(vnc_url, key, value)
         vnc_url.save()
+        invalidate_urls_cache()
 
         data = VncUrlListSerializer(vnc_url).data
         return self.success(data)
@@ -383,4 +386,5 @@ class VncUrlDetail(APIView):
             return self.error(error_msg)
 
         vnc_url.delete()
+        invalidate_urls_cache()
         return self.success({"id": vnc_url_id, "message": "删除成功"})

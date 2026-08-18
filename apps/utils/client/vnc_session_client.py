@@ -1,51 +1,71 @@
 import logging
-from itertools import cycle
+import threading
+import time
 from vnc_session_client import VncApi, ApiClient, Configuration
 
 logger = logging.getLogger(__name__)
 
+_round_robin_lock = threading.Lock()
+_round_robin_index = 0
+
+_urls_cache = None
+_urls_cache_time = 0
+_URLS_CACHE_TTL = 60
+
 
 def get_vnc_session_manager_urls():
-    """从数据库获取所有启用的 VNC Session Manager 节点 URL"""
+    """从数据库获取所有启用的 VNC Session Manager 节点 URL（带缓存）"""
+    global _urls_cache, _urls_cache_time
+    now = time.time()
+    if _urls_cache is not None and (now - _urls_cache_time) < _URLS_CACHE_TTL:
+        return _urls_cache
     from apps.vncserver.models import VncUrl
-    vnc_urls = VncUrl.objects.filter(is_enabled=True)
-    return [v.url for v in vnc_urls]
+    vnc_urls = list(VncUrl.objects.filter(is_enabled=True).order_by('id'))
+    _urls_cache = [v.url for v in vnc_urls]
+    _urls_cache_time = now
+    return _urls_cache
+
+
+def invalidate_urls_cache():
+    """手动失效URL缓存"""
+    global _urls_cache, _urls_cache_time
+    _urls_cache = None
+    _urls_cache_time = 0
 
 
 def get_round_robin_config():
-    """轮询选择下一个配置"""
-    from apps.vncserver.models import VNCSession
-    
+    """轮询选择下一个配置（线程安全）"""
+    global _round_robin_index
+
     vnc_urls = get_vnc_session_manager_urls()
     if not vnc_urls:
         msg = "没有可用的 VNC session manager 节点，请在数据库中配置节点信息"
         logger.error(msg)
         raise Exception(msg)
-    
+
     configs = [Configuration(host=url) for url in vnc_urls]
-    config_cycle = cycle(configs)
-    
-    max_desktops_per_node = 8
     total_nodes = len(configs)
-    attempts = 0
-    
-    while attempts < total_nodes:
-        config = next(config_cycle)
+    max_desktops_per_node = 8
+
+    with _round_robin_lock:
+        start_index = _round_robin_index % total_nodes
+        _round_robin_index = (_round_robin_index + 1) % total_nodes
+
+    from apps.vncserver.models import VNCSession
+
+    for offset in range(total_nodes):
+        idx = (start_index + offset) % total_nodes
+        config = configs[idx]
         node_url = config.host
-        
-        # 查询该节点上已创建的桌面数量
+
         desktop_count = VNCSession.objects.filter(node_url=node_url).count()
-        
+
         if desktop_count < max_desktops_per_node:
-            # 该节点还有容量，返回此配置
             logger.debug(f"Selected node {node_url} with {desktop_count}/{max_desktops_per_node} desktops")
             return config
-        
-        # 该节点已满，跳过
+
         logger.debug(f"Skipping node {node_url} - full ({desktop_count}/{max_desktops_per_node} desktops)")
-        attempts += 1
-    
-    # 所有节点都已满
+
     msg = f"All {total_nodes} VNC session manager nodes are full (max {max_desktops_per_node} desktops each)"
     logger.error(msg)
     raise Exception(msg)
