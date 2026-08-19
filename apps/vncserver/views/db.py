@@ -17,7 +17,7 @@ from apps.utils.client.vnc_session_client import (
     close_session,
     invalidate_urls_cache,
 )
-from apps.vncserver.models import VNCSession, AppManager, DisplayPool, VncUrl
+from apps.vncserver.models import VNCSession, AppManager, DisplayPool, VncUrl, NodeAppAuth
 from apps.vncserver.serializers import (
     VncSessionListSerializer,
     AppManagerListSerializer, AppManagerNameIdSerializer, AppManagerNameSerializer,
@@ -92,6 +92,15 @@ class VncServerManager(APIView):
             logger.error(error_msg)
             return self.error(error_msg)
         
+        # 检查APP是否授权了至少一个节点
+        auth_count = NodeAppAuth.objects.filter(
+            app_id=App_id, is_enabled=True, vnc_url__is_enabled=True
+        ).count()
+        if auth_count == 0:
+            error_msg = f"APP [{AppInfo.full_name}] 未授权任何可用节点，请先在节点管理中配置授权"
+            logger.error(error_msg)
+            return self.error(error_msg)
+        
         # 计算脚本路径（同步）
         vncserver_script_path = settings.VNCSERVER_SCRIPT_PATH
         run_bash_name = "run_{}.sh".format(AppInfo.full_name)
@@ -113,6 +122,7 @@ class VncServerManager(APIView):
             display_number=display_number,
             custom_script_path=start_script,
             user_id=user_id,
+            app_id=int(App_id),
         )
         
         return self.success({
@@ -325,7 +335,14 @@ class VncUrlManager(APIView):
             logger.error(error_msg)
             return self.error(error_msg)
 
-        vnc_url = VncUrl.objects.create(**serializer.validated_data)
+        model_data = {k: v for k, v in serializer.validated_data.items() if k != "app_ids"}
+        vnc_url = VncUrl.objects.create(**model_data)
+
+        # 保存授权关系
+        app_ids = serializer.validated_data.get("app_ids", [])
+        for app_id in app_ids:
+            NodeAppAuth.objects.create(vnc_url=vnc_url, app_id=app_id)
+
         invalidate_urls_cache()
         data = VncUrlListSerializer(vnc_url).data
         return self.success(data)
@@ -363,8 +380,24 @@ class VncUrlDetail(APIView):
                 return self.error(error_msg)
 
         for key, value in serializer.validated_data.items():
-            setattr(vnc_url, key, value)
+            if key != "app_ids":
+                setattr(vnc_url, key, value)
         vnc_url.save()
+
+        # 同步授权关系
+        if "app_ids" in serializer.validated_data:
+            new_app_ids = serializer.validated_data["app_ids"]
+            existing_auths = NodeAppAuth.objects.filter(vnc_url=vnc_url)
+            existing_map = {auth.app_id: auth for auth in existing_auths}
+            new_set = set(new_app_ids)
+            existing_set = set(existing_map.keys())
+            # 删除不再需要的授权
+            for app_id in existing_set - new_set:
+                existing_map[app_id].delete()
+            # 新增授权
+            for app_id in new_set - existing_set:
+                NodeAppAuth.objects.create(vnc_url=vnc_url, app_id=app_id)
+
         invalidate_urls_cache()
 
         data = VncUrlListSerializer(vnc_url).data
@@ -388,3 +421,12 @@ class VncUrlDetail(APIView):
         vnc_url.delete()
         invalidate_urls_cache()
         return self.success({"id": vnc_url_id, "message": "删除成功"})
+
+
+class VncAppList(APIView):
+    """获取所有APP列表（轻量级，用于节点授权下拉选择）"""
+
+    def get(self, request):
+        apps = AppManager.objects.filter(visible=True).order_by("id")
+        data = [{"id": a.id, "name": a.name, "version": a.version, "full_name": a.full_name} for a in apps]
+        return self.success(data)

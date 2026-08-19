@@ -63,6 +63,13 @@ class VncUrl(models.Model):
     description = models.CharField(max_length=1024, null=True, blank=True, help_text="节点描述")
     is_enabled = models.BooleanField(default=True, help_text="是否启用")
     add_time = models.DateTimeField(auto_now_add=True, help_text="添加时间")
+    apps = models.ManyToManyField(
+        "AppManager",
+        through="NodeAppAuth",
+        related_name="vnc_nodes",
+        verbose_name="授权APP",
+        blank=True,
+    )
 
     @property
     def url(self):
@@ -72,6 +79,20 @@ class VncUrl(models.Model):
         verbose_name = verbose_name_plural = "VNC节点配置"
         db_table = "vnc_urls"
         ordering = ["id"]
+
+
+class NodeAppAuth(models.Model):
+    """节点-APP 授权关系表"""
+
+    vnc_url = models.ForeignKey(VncUrl, on_delete=models.CASCADE, help_text="VNC节点")
+    app = models.ForeignKey("AppManager", on_delete=models.CASCADE, help_text="APP")
+    is_enabled = models.BooleanField(default=True, help_text="是否启用")
+    add_time = models.DateTimeField(auto_now_add=True, help_text="授权时间")
+
+    class Meta:
+        verbose_name = verbose_name_plural = "节点APP授权"
+        db_table = "node_app_auth"
+        unique_together = ("vnc_url", "app")
 
 
 class AppManager(models.Model):

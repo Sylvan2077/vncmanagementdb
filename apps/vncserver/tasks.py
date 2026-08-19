@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=10, name='vnc.start_vnc_session_async')
-def start_vnc_session_async(self, username, display_number, custom_script_path, user_id=None):
+def start_vnc_session_async(self, username, display_number, custom_script_path, user_id=None, app_id=None):
     """
     异步调用 start_vnc_session 并处理结果
     
@@ -31,6 +31,7 @@ def start_vnc_session_async(self, username, display_number, custom_script_path, 
     - display_number: 显示编号
     - custom_script_path: 启动脚本路径
     - user_id: 用户ID（可选）
+    - app_id: APP ID（用于节点授权检查，可选）
     """
     logger.info(f"Async task started: start_vnc_session_async with username={username}, display_number={display_number}")
     
@@ -41,7 +42,7 @@ def start_vnc_session_async(self, username, display_number, custom_script_path, 
     }
 
     try:
-        data = start_vnc_session(params)
+        data = start_vnc_session(params, app_id=app_id)
         if msg := data.get("msg"):
             logger.error(msg)
             # 释放预分配的 display number

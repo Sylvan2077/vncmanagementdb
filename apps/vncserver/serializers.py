@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from apps.vncserver.models import VNCSession, AppManager, VncUrl
+from apps.vncserver.models import VNCSession, AppManager, VncUrl, NodeAppAuth
 from apps.utils.api import serializers
 
 # VNCSession列表相关字段
@@ -106,13 +106,25 @@ VncUrlListFields = (
     "description",
     "is_enabled",
     "add_time",
+    "app_ids",
+    "app_list",
 )
 
 
 class VncUrlListSerializer(serializers.ModelSerializer):
+    app_ids = serializers.SerializerMethodField()
+    app_list = serializers.SerializerMethodField()
+
     class Meta:
         model = VncUrl
         fields = VncUrlListFields
+
+    def get_app_ids(self, obj):
+        return list(obj.nodeappauth_set.filter(is_enabled=True).values_list("app_id", flat=True))
+
+    def get_app_list(self, obj):
+        apps = obj.apps.all()
+        return [{"id": a.id, "name": a.name, "version": a.version} for a in apps]
 
 
 class CreateVncUrlSerializer(serializers.Serializer):
@@ -122,3 +134,4 @@ class CreateVncUrlSerializer(serializers.Serializer):
                                     error_messages={"invalid": "端口必须为整数！"})
     description = serializers.CharField(max_length=1024, required=False, allow_blank=True, allow_null=True)
     is_enabled = serializers.BooleanField(required=False, default=True)
+    app_ids = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)

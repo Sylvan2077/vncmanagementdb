@@ -33,8 +33,8 @@ def invalidate_urls_cache():
     _urls_cache_time = 0
 
 
-def get_round_robin_config():
-    """轮询选择下一个配置（线程安全）"""
+def get_round_robin_config(app_id=None):
+    """轮询选择下一个配置（线程安全），可按APP授权过滤"""
     global _round_robin_index
 
     vnc_urls = get_vnc_session_manager_urls()
@@ -43,7 +43,30 @@ def get_round_robin_config():
         logger.error(msg)
         raise Exception(msg)
 
-    configs = [Configuration(host=url) for url in vnc_urls]
+    if app_id is not None:
+        from apps.vncserver.models import NodeAppAuth, VncUrl
+        authorized_ids = list(
+            NodeAppAuth.objects.filter(
+                app_id=app_id, is_enabled=True, vnc_url__is_enabled=True
+            ).values_list("vnc_url_id", flat=True)
+        )
+        authorized_urls = list(
+            VncUrl.objects.filter(id__in=authorized_ids).order_by("id").values_list("url", flat=True)
+        )
+        configs = [Configuration(host=url) for url in authorized_urls]
+        if not configs:
+            from apps.vncserver.models import AppManager
+            try:
+                app_obj = AppManager.objects.get(id=app_id)
+                app_name = app_obj.full_name
+            except AppManager.DoesNotExist:
+                app_name = str(app_id)
+            msg = f"APP [{app_name}] 未授权任何节点，无法启动桌面"
+            logger.error(msg)
+            raise Exception(msg)
+    else:
+        configs = [Configuration(host=url) for url in vnc_urls]
+
     total_nodes = len(configs)
     max_desktops_per_node = 8
 
@@ -71,8 +94,8 @@ def get_round_robin_config():
     raise Exception(msg)
 
 
-def start_vnc_session(params: dict):
-    config = get_round_robin_config()
+def start_vnc_session(params: dict, app_id=None):
+    config = get_round_robin_config(app_id=app_id)
     with ApiClient(config) as api_client:
         vnc_server_api = VncApi(api_client)
         try:
