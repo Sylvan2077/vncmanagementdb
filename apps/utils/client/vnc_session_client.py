@@ -1,6 +1,8 @@
 import logging
 import threading
 import time
+
+from django.db import models
 from vnc_session_client import VncApi, ApiClient, Configuration
 
 logger = logging.getLogger(__name__)
@@ -34,7 +36,14 @@ def invalidate_urls_cache():
 
 
 def get_round_robin_config(app_id=None):
-    """轮询选择下一个配置（线程安全），可按APP授权过滤"""
+    """按最小负载优先选择节点（线程安全），可按APP授权过滤
+
+    策略：
+    1. 查询所有候选节点的当前桌面数
+    2. 选择桌面数最少的节点作为分配起点
+    3. 多个节点并列最少时，使用轮询索引在并列节点间打破平局
+    4. 若最少节点已满，再依次尝试其他节点（次少 → 最多）
+    """
     global _round_robin_index
 
     vnc_urls = get_vnc_session_manager_urls()
@@ -70,24 +79,42 @@ def get_round_robin_config(app_id=None):
     total_nodes = len(configs)
     max_desktops_per_node = 8
 
-    with _round_robin_lock:
-        start_index = _round_robin_index % total_nodes
-        _round_robin_index = (_round_robin_index + 1) % total_nodes
-
     from apps.vncserver.models import VNCSession
 
-    for offset in range(total_nodes):
-        idx = (start_index + offset) % total_nodes
-        config = configs[idx]
-        node_url = config.host
+    node_urls = [c.host for c in configs]
+    count_map = {
+        row["node_url"]: row["cnt"]
+        for row in VNCSession.objects.filter(node_url__in=node_urls)
+        .values("node_url")
+        .annotate(cnt=models.Count("id"))
+    }
 
-        desktop_count = VNCSession.objects.filter(node_url=node_url).count()
+    node_info = [(i, c.host, count_map.get(c.host, 0)) for i, c in enumerate(configs)]
+    node_info.sort(key=lambda x: (x[2], x[0]))
 
-        if desktop_count < max_desktops_per_node:
-            logger.debug(f"Selected node {node_url} with {desktop_count}/{max_desktops_per_node} desktops")
+    min_count = node_info[0][2]
+    min_candidates = [n for n in node_info if n[2] == min_count]
+
+    with _round_robin_lock:
+        start_node = min_candidates[_round_robin_index % len(min_candidates)]
+        _round_robin_index = (_round_robin_index + 1) % max(len(min_candidates), 1)
+
+    start_index = start_node[0]
+    start_count = start_node[2]
+    start_config = configs[start_index]
+
+    if start_count < max_desktops_per_node:
+        logger.debug(f"Selected node {start_config.host} with {start_count}/{max_desktops_per_node} desktops (min-load)")
+        return start_config
+
+    for _, node_url, count in node_info:
+        if node_url == start_config.host:
+            continue
+        if count < max_desktops_per_node:
+            config = Configuration(host=node_url)
+            logger.debug(f"Selected node {node_url} with {count}/{max_desktops_per_node} desktops (fallback)")
             return config
-
-        logger.debug(f"Skipping node {node_url} - full ({desktop_count}/{max_desktops_per_node} desktops)")
+        logger.debug(f"Skipping node {node_url} - full ({count}/{max_desktops_per_node} desktops)")
 
     msg = f"All {total_nodes} VNC session manager nodes are full (max {max_desktops_per_node} desktops each)"
     logger.error(msg)
