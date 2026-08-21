@@ -112,12 +112,16 @@ VncUrlListFields = (
 
 
 class VncUrlListSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
     app_ids = serializers.SerializerMethodField()
     app_list = serializers.SerializerMethodField()
 
     class Meta:
         model = VncUrl
         fields = VncUrlListFields
+
+    def get_url(self, obj):
+        return obj.url
 
     def get_app_ids(self, obj):
         return list(obj.nodeappauth_set.filter(is_enabled=True).values_list("app_id", flat=True))

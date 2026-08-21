@@ -59,9 +59,10 @@ def get_round_robin_config(app_id=None):
                 app_id=app_id, is_enabled=True, vnc_url__is_enabled=True
             ).values_list("vnc_url_id", flat=True)
         )
-        authorized_urls = list(
-            VncUrl.objects.filter(id__in=authorized_ids).order_by("id").values_list("url", flat=True)
+        authorized_nodes = list(
+            VncUrl.objects.filter(id__in=authorized_ids).order_by("id")
         )
+        authorized_urls = [n.url for n in authorized_nodes]
         configs = [Configuration(host=url) for url in authorized_urls]
         if not configs:
             from apps.vncserver.models import AppManager
